@@ -544,6 +544,20 @@
     'גשר:': 'Bridge:',
     'לא מחובר': 'Not connected',
     'יש לאשר את החיבור בחלון שנפתח במחשב': 'Approve the connection in the window that opened on the computer',
-    'פתיחה עם קיצור מקשים': 'Open with a keyboard shortcut'
+    'פתיחה עם קיצור מקשים': 'Open with a keyboard shortcut',
+    'הקטגוריה לא נמצאה': 'Category not found',
+    'ספריית אוצריא': 'Otzaria library',
+    'פתיחה בעיון של אוצריא': 'Open in Otzaria reader',
+    'הקובץ לא נמצא כספר בספריית אוצריא': 'The file was not found as a book in the Otzaria library',
+    'הפתיחה בעיון נכשלה': 'Opening in the reader failed',
+    'השם אינו יכול לכלול את התווים \\ / : * ? " < > |': 'The name cannot contain the characters \\ / : * ? " < > |',
+    'תיקיות הגישה המהירה בספריית אוצריא': 'Quick-access folders in the Otzaria library',
+    'תיקיות הגישה המהירה מוצגות בספרייה תחת "סייר קבצים", ולחיצה פותחת אותן בסייר. רק התיקיות — לא הקבצים.': 'Quick-access folders are shown in the library under "File Explorer", and clicking opens them in the Explorer. Folders only — not the files.',
+    'אסתר גיטה דינר בת רבי מיכאל שלום הלוי שיבדלט"א': 'Esther Gitta Diner, daughter of Rabbi Michael Shalom HaLevi, may he live long',
+    'תשובה לא צפויה מ-network.fetchStream': 'Unexpected response from network.fetchStream',
+    ' - עותק': ' - copy',
+    'ההערה נשלחת לצוות אוצריא ולמפתח התוסף דרך מערכת הדיווח של אוצריא, וגם כ-issue ציבורי בגיטהאב של התוסף (פרטים אישיים מוסתרים). לפני השליחה תוצג בקשת אישור.': 'The note is sent to the Otzaria team and the plugin developer through Otzaria\'s reporting system, and also as a public issue on the plugin\'s GitHub (personal details are hidden). A confirmation prompt is shown before sending.',
+    'סיסמה שגויה (בדמה: 1234)': 'Wrong password (in the demo: 1234)',
+    'יש להזין נתיב מלא, למשל C:\\Users\\שם\\Desktop': 'Enter a full path, e.g. C:\\Users\\Name\\Desktop'
   });
 })();

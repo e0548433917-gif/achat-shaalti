@@ -785,17 +785,6 @@
         ic(c.icon) + '<span>' + (S.recycle && c.id === 'delete' ? 'מחיקה לצמיתות' : c.label) + '</span></button>';
     }).join('');
   }
-  /* #20 (13.10.2026): הוצאת כונן USB בבטחה מתפריט הלחצן הימני — אותה קריאה כמו בתוסף ההגדרות */
-  async function ejectDrive(e) {
-    var letter = String(e.path || '').charAt(0).toUpperCase();
-    busy(true, 'מוציא את הכונן…');
-    try {
-      var r = await FX.Bridge.call('/sys/usb/eject', { letter: letter }, { timeoutMs: 30000 });
-      ui.toast((r && r.poweredOff ? 'ההתקן כובה. ' : '') + 'אפשר לנתק את הכונן ' + letter + ' בבטחה', 'success');
-    } catch (err) { opError(err, 'הוצאת הכונן נכשלה'); }
-    busy(false);
-    if (S.isRoot) go(S.path);
-  }
   function run(id, ev) {
     var st = cmdState(id);
     if (!st.on) { if (st.why) ui.toast(st.why, 'info'); return; }
@@ -821,7 +810,6 @@
       case 'openInReader': return openInReader(selected()[0]);
       case 'openLocation': return openLocation(selected()[0]);
       case 'zip': case 'unzip': case 'sendTo': case 'eject': return FX.packb[id](selected(), S.path);
-      case 'eject': return ejectDrive(selected()[0]);
       case 'copyPath': return copyText(selected().map(function (x) { return S.prov.displayPath(x.path); }).join('\n')).then(function () { ui.toast('הנתיב הועתק', 'success'); });
     }
   }

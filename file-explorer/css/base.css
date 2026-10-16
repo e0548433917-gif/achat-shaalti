@@ -433,7 +433,18 @@ code { font-family: var(--font-mono); }
   user-select: all;
   /* דיאלוג צר (נייד): קוד שחזור ארוך לא ייחתך ולא יגלוש מחוץ לדיאלוג */
   word-break: break-all;
+  display: flex; align-items: center; justify-content: center; gap: 0.3em; flex-wrap: wrap;
 }
+.recovery-code [data-copy-code] {
+  font-size: 0.5rem; flex: none; user-select: none;
+}
+/* #69: קודי גיבוי — שני טורים, ממוספרים */
+.backup-codes {
+  margin: 0.875em 0; padding: 0.875em 2.2em; border-radius: var(--radius-md);
+  border: 0.125em dashed var(--color-primary); background: var(--color-primary-subtle); color: var(--color-primary);
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.35em 2em; text-align: left; user-select: all;
+}
+.backup-codes code { font-family: var(--font-mono); font-size: 1.15em; font-weight: 700; letter-spacing: 0.06em; background: none; padding: 0; }
 .warn-text { display: flex; gap: 0.375em; align-items: flex-start; color: var(--color-error); }
 .warn-text .ic { width: 1.2em; height: 1.2em; margin-top: 0.0625em; }
 .bullets { padding-inline-start: 1.3em; margin: 0.5em 0 0.625em; display: flex; flex-direction: column; gap: 0.25em; }

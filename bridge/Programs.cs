@@ -161,7 +161,7 @@ public static class Programs
             name = e.Name,
             path = e.Path,
             procs = e.Procs,
-            exists = File.Exists(e.Path),
+            exists = ExeExists(e.Path),
             running = ExistingWindow(e) != IntPtr.Zero,
             auto = e.Auto,
         }).ToArray()
@@ -196,6 +196,9 @@ public static class Programs
     /// עוד לפני שהחלון שנפתח מספיק להיראות בכלל.
     /// </summary>
     internal static void GrantForegroundGrace() => GraceUntil = DateTime.UtcNow.AddSeconds(GraceSeconds);
+
+    /// <summary>חלון חסד פתוח כרגע (למשל אחרי "הצגה בסייר Windows") - KioskGuard לא סוגר אז חלון סייר שנפתח בכוונה</summary>
+    internal static bool InForegroundGrace => DateTime.UtcNow < GraceUntil;
 
     public static bool Activate(Entry e)
     {

@@ -82,7 +82,11 @@
 .topbar-btn.on { background: var(--color-primary-subtle); color: var(--color-primary); }
 
 /* גוף */
-.fx-body { flex: 1 1 auto; min-height: 0; display: flex; }
+/* flex-basis 0 (ולא auto): עם auto הגובה ההתחלתי של הגוף הוא גובה כל רשימת הקבצים, הסכום חורג מ-100vh,
+   וה-flex מכווץ גם את סרגל הפעולות (.fx-cmds, שבו overflow מאפשר גובה מינימלי 0) - נראה כפס "חתוך חלקית"
+   בעיקר במצבי תצוגה עם הרבה פריטים. הסרגל, הכותרות והסטטוס לא מתכווצים; רק הרשימה גוללת */
+.fx-body { flex: 1 1 0; min-height: 0; display: flex; }
+.fx-cmds, .fx-head, .fx-status { flex-shrink: 0; }
 .fx-side {
   width: var(--fx-side-w); flex: 0 0 auto; overflow-y: auto; padding: 0.5em;
   border-inline-end: 0.0625em solid var(--fx-line); background: var(--color-surface-container-low);
@@ -113,7 +117,7 @@
 .fx-col:hover, .fx-col.on { color: var(--color-on-surface); }
 .fx-col-where { cursor: default; }
 .fx-sort-dir { font-size: 0.75em; }
-.fx-list { flex: 1 1 auto; overflow: auto; padding: 0.25em 0 1em; user-select: none; }
+.fx-list { flex: 1 1 0; min-height: 0; overflow: auto; padding: 0.25em 0 1em; user-select: none; }
 /* פס גלילה דק ונקי (בלי כפתורי חץ למעלה/למטה של הדפדפן) - בלעדיו WebView2 מציג פס גלילה "קלאסי"
    עם משולש חץ בראש, שנראה כמו רכיב תקול/לא ממוקם נכון מעל הכותרות/הסרגל כשאין רווח ברור מתחתיו */
 .fx-list { scrollbar-width: thin; }
@@ -470,12 +474,12 @@ a.btn { text-decoration: none; display: inline-flex; }
 .fx-snip { color: var(--fx-muted); font-size: 0.8125em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .fx-row.has-snip { height: auto; min-height: var(--fx-row-h); padding-block: 0.3125em; }
 .fx-row.sel .fx-snip { color: inherit; opacity: 0.85; }
-mark.fx-hit { background: color-mix(in srgb, #f6c445 55%, transparent); color: inherit; border-radius: 0.1875em; padding: 0 0.0625em; }
-mark.fx-hit.cur { background: #f6a21b; color: #1c1c1c; outline: 0.125em solid #f6a21b; }
+mark.fx-hit { background: color-mix(in srgb, var(--color-tertiary) 45%, transparent); color: inherit; border-radius: 0.1875em; padding: 0 0.0625em; }
+mark.fx-hit.cur { background: var(--color-tertiary-container); color: var(--color-on-tertiary-container); outline: 0.125em solid var(--color-tertiary); }
 
 /* ---------- צופים נוספים ---------- */
 .fx-media { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1em; min-height: 100%; padding: 1.5em; }
-.fx-media video { max-width: 100%; max-height: 78vh; border-radius: 0.5em; background: #000; }
+.fx-media video { max-width: 100%; max-height: 78vh; border-radius: 0.5em; background: var(--color-inverse-surface); }
 .fx-media audio { width: min(32em, 100%); }
 .fx-media-ic svg { width: 5em; height: 5em; color: var(--color-primary); }
 .fx-sheet-tabs { display: flex; gap: 0.25em; padding: 0.5em; border-bottom: 0.0625em solid var(--fx-line); overflow-x: auto; position: sticky; top: 0; background: var(--color-surface-container); z-index: 1; }
@@ -518,9 +522,9 @@ mark.fx-hit.cur { background: #f6a21b; color: #1c1c1c; outline: 0.125em solid #f
 .fx-pol-min { max-width: 14em; }
 
 /* חבילה [ב]: פס מקום בכוננים */
-.fx-dbar { display: block; height: 6px; border-radius: 3px; background: var(--fx-line, rgba(127,127,127,.25)); overflow: hidden; margin-bottom: 2px; }
+.fx-dbar { display: block; height: 6px; border-radius: 3px; background: var(--fx-line); overflow: hidden; margin-bottom: 2px; }
 .fx-dbar > i { display: block; height: 100%; background: var(--color-primary); }
-.fx-dbar.low > i { background: #c53030; }
+.fx-dbar.low > i { background: var(--color-error); }
 
 /* #18 (13.10.2026): סרגל הניווט (חזרה/רענון/נתיב/חיפוש) בתוך הסרגל העליון הקבוע — בלי שורה נוספת */
 .topbar .fx-nav { flex: 1 1 auto; min-width: 0; border-bottom: 0; padding: 0; gap: 0.125em; }
@@ -529,7 +533,7 @@ mark.fx-hit.cur { background: #f6a21b; color: #1c1c1c; outline: 0.125em solid #f
 .topbar .fx-search { flex-basis: 14em; }
 
 /* #56: ספרים מספריית אוצריא בזמן חיפוש */
-.fx-libhits { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 6px 10px; border-bottom: 1px solid var(--color-border, #ddd); }
+.fx-libhits { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 6px 10px; border-bottom: 1px solid var(--color-outline-variant); }
 .fx-libhits-title { font-weight: 600; margin-inline-end: 6px; }
-.fx-libhit { border: 1px solid var(--color-border, #ccc); background: var(--color-primary-subtle, transparent); color: inherit; border-radius: 14px; padding: 2px 10px; cursor: pointer; font: inherit; }
-.fx-libhit:hover, .fx-libhit:focus-visible { border-color: var(--color-primary, #36c); }
+.fx-libhit { border: 1px solid var(--color-outline-variant); background: var(--color-primary-subtle, transparent); color: inherit; border-radius: 14px; padding: 2px 10px; cursor: pointer; font: inherit; }
+.fx-libhit:hover, .fx-libhit:focus-visible { border-color: var(--color-primary); }

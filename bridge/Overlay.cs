@@ -45,6 +45,7 @@ public static class Overlay
 
     public static void ShowRest(IntPtr otzaria, bool idle = false) => Tray.Invoke(() =>
     {
+        if (EmergencyForm.IsOpen) return; // חלון ביטול חירום פתוח - לא מכסים אותו
         var screens = Screen.AllScreens;
         // התאמה למספר המסכים (גם אם השתנה: חיבור/ניתוק מסך בזמן ריצה)
         while (_rest.Count < screens.Length) _rest.Add(new RestScreen());
@@ -174,7 +175,17 @@ internal sealed class ClockBar : Form
         Cursor = Cursors.Hand;
         RightToLeft = RightToLeft.Yes;
         _tick.Tick += (_, _) => Refresh_();
-        MouseClick += (_, e) => { if (!BarProgramClick(e.Location)) Overlay.BringOtzaria(IntPtr.Zero); }; // D4
+        // 7 לחיצות מהירות (עד 3 שניות בין לחיצה ללחיצה) פותחות את חלון קוד השחזור - דרך מילוט שלא תלויה
+        // במקלדת/ב-hook (בחלק מהמחשבים F12 לא מגיע כמות שהוא). לחיצה בודדת ממשיכה כרגיל
+        int clicks = 0; var lastClick = DateTime.MinValue;
+        MouseClick += (_, e) =>
+        {
+            var now = DateTime.UtcNow;
+            clicks = (now - lastClick).TotalSeconds <= 3 ? clicks + 1 : 1;
+            lastClick = now;
+            if (clicks >= 7) { clicks = 0; EmergencyForm.Open(); return; }
+            if (!BarProgramClick(e.Location)) Overlay.BringOtzaria(IntPtr.Zero); // D4
+        };
         Refresh_();
         _tick.Start();
     }
@@ -485,7 +496,8 @@ internal sealed class RestScreen : Form
         bool shLogo = Config.Get("kiosk.restShowLogo", true);
         bool shDed = Config.Get("kiosk.restShowDedication", true);
         List<string> zmItems = new();
-        if (shZm) SafePart("zmanim-calc", () => zmItems = ZmanimItems(Zmanim.Sections(DateTime.Now)));
+        // CachedZmanim: מחושב פעם ב-30 שניות ולא בכל פריים (OnPaint ~25 פעמים בשנייה)
+        if (shZm) SafePart("zmanim-calc", () => zmItems = CachedZmanim());
         bool zmLeft = Config.Get("kiosk.restZmanimSide", "right") == "left";
         // d992415 (יאיר) + משוב 15.10 — "גם וגם": סגנון ההקדשה הוא בחירת המשתמש (kiosk.restDedicationStyle):
         // "fixed" (ברירת מחדל) — ההקדשה בגבולות קבועים בתחתית הצד שמול הזמנים; "column" — עמודת הקדשה של יאיר עם נר.
@@ -559,7 +571,8 @@ internal sealed class RestScreen : Form
         string venue = Config.Get("kiosk.venueName", "");
         if (!string.IsNullOrWhiteSpace(venue))
         {
-            g.DrawString(venue, dateF, dim, Line(y, 36 * s), center);
+            using (var venueF = new Font(UiFamily, 20f, GraphicsUnit.Point))
+                g.DrawString(venue, venueF, dim, Line(y, 36 * s), center);
             y += 36 * s;
         }
         // #2: התאריך הלועזי באותה שורה עם העברי (לא בשורה נפרדת שנופלת מתחת להקדשה)
@@ -647,6 +660,22 @@ internal sealed class RestScreen : Form
     }
 
     /// <summary>מפרק את שורות הזמנים ("א · ב\nג") לפריטים — פריט אחד לכל שורה בעמודה</summary>
+    // OnPaint רץ כ-25 פעמים בשנייה; חישוב הזמנים (JSON, KosherJava, קריאות config) בכל פריים היה כבד, וחריגה שם
+    // הפילה את כל הציור (מסך לבן עם X אדום). מחשבים פעם ב-30 שניות, וכשל מחזיר רשימה ריקה במקום לקרוס
+    private static List<string> _zmCache = new();
+    private static DateTime _zmAt = DateTime.MinValue;
+
+    private static List<string> CachedZmanim()
+    {
+        if ((DateTime.UtcNow - _zmAt).TotalSeconds >= 30)
+        {
+            try { _zmCache = ZmanimItems(Zmanim.Sections(DateTime.Now)); }
+            catch (Exception ex) { Config.Log("zmanim: " + ex.Message); _zmCache = new List<string>(); }
+            _zmAt = DateTime.UtcNow;
+        }
+        return _zmCache;
+    }
+
     internal static List<string> ZmanimItems(string[] sections)
     {
         var items = new List<string>();
@@ -661,6 +690,18 @@ internal sealed class RestScreen : Form
                 }
         }
         return items;
+    }
+
+    /// <summary>
+    /// גופן ברירת המחדל של ממשק Windows (Segoe UI בווינדוס 10/11, בכל שפה) - קיים ומכסה עברית אצל כולם, בניגוד
+    /// ל-"David"/"Segoe UI Semibold" שאינם מובטחים בכל התקנה (ובהיעדרם הופיעו ריבועים ליד הטקסט)
+    /// </summary>
+    private static readonly string UiFamily = ResolveUiFamily();
+
+    private static string ResolveUiFamily()
+    {
+        try { using var f = SystemFonts.MessageBoxFont; return f.FontFamily.Name; }
+        catch { return "Segoe UI"; }
     }
 
     /// <summary>עמודת זמנים עם רקע עדין. הגופן קטן עד שכל השורות נכנסות בגובה וברוחב; אם גם בגופן
@@ -684,7 +725,7 @@ internal sealed class RestScreen : Form
         for (float size = 18f; ; size -= 1f) // #1: גופן ברור ככל האפשר
         {
             f?.Dispose();
-            f = new Font("David", size, FontStyle.Bold, GraphicsUnit.Point); // ba639f5 (יאיר): כיסוי גרש/גרשיים — בלי ריבועים
+            f = new Font(UiFamily, size, FontStyle.Bold, GraphicsUnit.Point); // גופן ברירת המחדל של Windows — קיים ומכסה עברית (כולל גרש/גרשיים) אצל כולם
             lineH = f.GetHeight(g) * 1.2f;
             float widest = 0;
             foreach (var it in items) if (it.Length > 0) widest = Math.Max(widest, g.MeasureString(it, f).Width);
@@ -741,7 +782,7 @@ internal sealed class RestScreen : Form
         var center = new StringFormat(StringFormatFlags.DirectionRightToLeft) { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Near };
         using var dim = new SolidBrush(Color.FromArgb(205, 225, 218, 200));
         float textTop = y + 16 * s, textH = maxH * 0.5f;
-        using (var dedF = new Font("David", 16f, GraphicsUnit.Point))
+        using (var dedF = new Font(UiFamily, 16f, GraphicsUnit.Point))
             g.DrawString(text, dedF, dim, new RectangleF(x + 12 * s, textTop, w - 24 * s, textH), center);
 
         // נר מרצד בחצי התחתון של העמודה - נדנוד איטי (כל הלהבה) + ריצוד מהיר (גודל/שקיפות), בנפרד

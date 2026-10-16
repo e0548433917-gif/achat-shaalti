@@ -66,10 +66,22 @@ internal sealed class SideBar : Form
     private int FullH => (int)((IconsOnly ? 50 : 74) * S);            // אופקי: עובי הסרגל כשפתוח
     private int StripW => (int)(12 * S);                              // עובי הסרגל כשמכווץ (שני הכיוונים)
 
+    // Programs.Load עלול להריץ סריקת כוננים (עד 8 שניות לכל תוכנה תורנית שלא נמצאה) - אסור על חוט ה-UI,
+    // שגם מריץ את hook המקלדת: חסימה שם מאטה/מנתקת את ה-hook ותוקעת את המקלדת והעכבר (נראה כמו "נתקע בנעילה")
     public void Rebuild()
     {
+        Task.Run(() =>
+        {
+            List<Programs.Entry> progs = null;
+            try { progs = Programs.Load(); } catch { }
+            Tray.Invoke(() => RebuildWith(progs));
+        });
+    }
+
+    private void RebuildWith(List<Programs.Entry> progs)
+    {
         var list = new List<Item> { new Item { Name = Lang.T("אוצריא", "Otzaria"), Running = true, Icon = IconOf(Kiosk.OtzariaPath()) } };
-        try { foreach (var e in Programs.Load()) list.Add(new Item { Name = SideBarNames.Fix(e.Name, e.Path), Entry = e, Icon = IconOf(e.Path) }); } catch { }
+        try { foreach (var e in progs ?? new List<Programs.Entry>()) list.Add(new Item { Name = SideBarNames.Fix(e.Name, e.Path), Entry = e, Icon = IconOf(e.Path) }); } catch { }
         // #60 (גרסה מינימלית): גישה לחלונות הגשר בנעילה, מתוך הסרגל הקיים
         Bitmap bi = null; try { bi = Icon.ExtractAssociatedIcon(Environment.ProcessPath!)?.ToBitmap(); } catch { }
         // משוב 15.10: בסרגל הנעילה פריט אחד — החלון הראשי עם כל הטאבים (אודות, מה חדש, דיווחים, צימוד, כלים וצילום מסך)
@@ -474,12 +486,26 @@ internal sealed class EmergencyForm : Form
 
     public static void Open()
     {
-        if (!Kiosk.IsActive) return;
+        // לא רק Kiosk.IsActive (דגל מקומי ב-config.json): כשרכיב ההקשחה מותקן הוא מקור האמת למצב
+        // הנעילה, ועלול לאכוף נעילה גם כש-config.json המקומי לא מסונכרן (למשל אחרי קריסה/הפעלה
+        // מחדש) - חלון ביטול החירום חייב להיות זמין בכל מצב שבו המשתמש בפועל נעול, לא רק לפי הדגל המקומי
+        if (!Kiosk.IsActive && !HardLock.ServiceActive)
+        {
+            Config.Log("emergency: הצירוף זוהה אבל הנעילה אינה פעילה (מקומי וגם שירות) - החלון לא נפתח");
+            return;
+        }
+        Config.Log("emergency: פותח חלון קוד שחזור");
         if (_open is { IsDisposed: false }) { _open.Activate(); return; }
+        // מסך המנוחה (מסך מלא TopMost) היה מכסה את החלון: מסתירים אותו, ו-ShowRest לא יציג אותו שוב כל עוד החלון פתוח
+        Overlay.HideRest();
         _open = new EmergencyForm();
         _open.Show();
         Kiosk.BringToFront(_open.Handle);
+        // BringToFront מחזיר ל-NOTOPMOST; מחזירים TopMost כדי שלא יסתתר מאחורי שכבות הנעילה
+        _open.TopMost = true;
     }
+
+    public static bool IsOpen => _open is { IsDisposed: false, Visible: true };
 
     private EmergencyForm()
     {
@@ -502,8 +528,12 @@ internal sealed class EmergencyForm : Form
         AcceptButton = ok;
         ok.Click += (_, _) =>
         {
-            if (Kiosk.EmergencyRelease(code.Text)) { Close(); return; }
-            msg.Text = Lang.T("הקוד שגוי", "Wrong code");
+            try
+            {
+                if (Kiosk.EmergencyRelease(code.Text)) { Close(); return; }
+                msg.Text = Lang.T("הקוד שגוי", "Wrong code");
+            }
+            catch (Exception ex) { msg.Text = ex.Message; } // למשל נעילה זמנית אחרי כמה ניסיונות כושלים - בלי זה אין שום הודעה
             code.SelectAll();
         };
         Shown += (_, _) => code.Focus();

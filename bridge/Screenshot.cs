@@ -47,7 +47,7 @@ public static class Screenshot
             if (region)
             {
                 Rectangle r;
-                using (var f = new RegionForm(full, vs)) { if (f.ShowDialog() != DialogResult.OK || f.Sel.Width < 4 || f.Sel.Height < 4) return null; r = f.Sel; }
+                using (var f = new RegionForm(full, vs)) { if (f.ShowDialog() != DialogResult.OK) return null; var sel = f.Sel; if (sel.Width < 4 || sel.Height < 4) return null; r = sel; }
                 shot = full.Clone(r, full.PixelFormat);
             }
             string dir = Folder();

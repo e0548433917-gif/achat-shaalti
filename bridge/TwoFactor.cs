@@ -31,6 +31,7 @@ public static class TwoFactor
         {
             if (UserConsentVerifier.CheckAvailabilityAsync().GetAwaiter().GetResult() != UserConsentVerifierAvailability.Available)
                 return false;
+            Programs.GrantForegroundGrace(); // חלון Hello אינו "תוכנה מותרת" - ר' הערה ב-HardLock.RunHello
             return UserConsentVerifier.RequestVerificationAsync(message).GetAwaiter().GetResult() == UserConsentVerificationResult.Verified;
         }
         catch { return false; }

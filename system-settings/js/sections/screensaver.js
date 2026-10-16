@@ -48,7 +48,6 @@
     form.addEventListener('submit', async function (e) {
       e.preventDefault();
       var x = ui.fieldValues(form, fields);
-      if ((x.dedication || '').trim().length > 120) { ui.toast('ההקדשה האישית: עד 120 תווים', 'error'); return; }
       var btn = form.querySelector('button[type=submit]');
       btn.disabled = true;
       try {

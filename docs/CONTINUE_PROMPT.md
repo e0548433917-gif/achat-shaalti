@@ -34,7 +34,7 @@ build לגשר (/opt/dn8/dotnet, ר' KNOWLEDGE); commit+push ל-next; fast-forwa
 
 ```
 המשך כלי מערכת לאוצריא — ענף next (לא main), בלי להוציא גרסה.
-ריפו: e0548433917-gif/otzaria-system-tools.
+ריפו: e0548433917-gif/achat-shaalti.
 
 התחלה:
 - שכפל עם --depth 1 -b next וקרא רק docs/ROADMAP.md, הסעיף "ממתין לגרסה הבאה" ו"המשימות הבאות".

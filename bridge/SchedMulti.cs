@@ -6,8 +6,8 @@ using System.Text.Json.Nodes;
 namespace OtzariaBridge;
 
 /// <summary>C4: חלונות נעילה נוספים ("הוסף זמן") מעבר לחלון הראשי של kiosk.schedule.
-/// נשמרים כרשימת "HH:MM-HH:MM" ב-kiosk.schedule.extra. נאכפים בתזמון של הגשר (נעילה רכה);
-/// רכיב ההקשחה (שירות) מקבל עדיין רק את החלון הראשי.</summary>
+/// נשמרים כרשימת "HH:MM-HH:MM" ב-kiosk.schedule.extra. נאכפים בתזמון של הגשר (נעילה רכה)
+/// ובשירות (נעילה מוקשחת) - הרשימה מועברת אליו ב-HardLock.SetSchedule.</summary>
 internal static class SchedMulti
 {
     private const string Key = "kiosk.schedule.extra";
@@ -16,31 +16,25 @@ internal static class SchedMulti
         .Select(s => s.Split('-')).Where(p => p.Length == 2)
         .Select(p => (object)new { start = p[0], end = p[1] }).ToArray();
 
+    /// <summary>"HH:mm-HH:mm,..." של החלונות הנוספים - כך הם מועברים לרכיב ההקשחה (HardLock.SetSchedule)</summary>
+    public static string ExtraCsv => string.Join(",", Config.GetList(Key));
+
+    /// <summary>החלון הראשי + הנוספים</summary>
+    public static List<(string start, string end)> AllWindows()
+    {
+        var all = new List<(string, string)> { (Kiosk.ScheduleStart, Kiosk.ScheduleEnd) };
+        all.AddRange(Sched.ParseWindows(ExtraCsv));
+        return all;
+    }
+
     public static bool InAnyWindow(DateTime now) =>
-        (Sched.InWindow(Kiosk.ScheduleStart, Kiosk.ScheduleEnd, now) && PackG.WindowDayAllowed(Kiosk.ScheduleStart, now)) ||
-        Config.GetList(Key).Select(s => s.Split('-')).Any(p => p.Length == 2 && Sched.InWindow(p[0], p[1], now) && PackG.WindowDayAllowed(p[0], now));
+        AllWindows().Any(w => Sched.InWindow(w.start, w.end, now) && PackG.WindowDayAllowed(w.start, now));
 
     /// <summary>סוף החלון המתוזמן שבתוכו אנו נמצאים כעת — הרגע שבו המחשב יוצא מכל חלונות הנעילה.
     /// משמש כדי ש"ביטול נעילה" ידני בתוך חלון מתוזמן לא יידרס מיד על ידי התזמון שינעל מחדש.
     /// חלון החוצה חצות מטופל: אם אנו בזנב שאחרי חצות הסוף הוא היום, אחרת מחר.</summary>
-    public static DateTime CurrentWindowEnd(DateTime now)
-    {
-        DateTime best = now;
-        void Consider(string start, string end)
-        {
-            if (!Sched.InWindow(start, end, now)) return;
-            var s = Sched.ParseTime(start); var e = Sched.ParseTime(end);
-            if (s == null || e == null) return;
-            DateTime endAt = e <= s
-                ? (now.TimeOfDay < e ? now.Date + e.Value : now.Date.AddDays(1) + e.Value) // חוצה חצות
-                : now.Date + e.Value;
-            if (endAt > best) best = endAt;
-        }
-        Consider(Kiosk.ScheduleStart, Kiosk.ScheduleEnd);
-        foreach (var p in Config.GetList(Key).Select(s => s.Split('-')).Where(p => p.Length == 2))
-            Consider(p[0], p[1]);
-        return best;
-    }
+    public static DateTime CurrentWindowEnd(DateTime now) =>
+        Sched.CurrentWindowEnd(AllWindows().Where(w => PackG.WindowDayAllowed(w.start, now)), now) ?? now;
 
     public static void Apply(JsonElement sch)
     {

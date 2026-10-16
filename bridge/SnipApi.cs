@@ -50,6 +50,7 @@ public static class SnipApi
     /// <summary>גוף: { image: base64 או data URL (PNG), timeoutSec?: 25 } → { text }</summary>
     private static async Task<object> Ocr(JsonElement b)
     {
+        Programs.GrantForegroundGrace(); // כלי החיתוך נפתח כאן בלי דרך Programs.Activate - בלי חסד Watch מחזיר את אוצריא לחזית
         byte[] bytes = DecodeImage(b.Req("image"));
         if (bytes.Length == 0) throw BridgeException.BadRequest("התמונה ריקה");
         int timeout = (int)Math.Clamp(b.Long("timeoutSec", 25), 8, 90);

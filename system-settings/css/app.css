@@ -87,15 +87,15 @@ body.ss-compact .nav-item span { display: block; font-size: 0.68em; line-height:
 /* D5: רשימת בחירה גלילה */
 select.input.listbox { height: auto; padding: 4px; overflow-y: auto; background-image: none; }
 select.input.listbox option { padding: 6px 10px; border-radius: 6px; }
-select.input.listbox option:checked { background: var(--color-primary); color: #fff; }
+select.input.listbox option:checked { background: var(--color-primary); color: var(--color-on-primary); }
 
 /* משוב 15.10: שורת "להציג" + מתג "התראה" */
 .check-pair{display:flex;align-items:center;justify-content:space-between;gap:12px}
 .check-pair .check-row{flex:1;min-width:0}
-.mini-switch{display:inline-flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;color:var(--muted,#777);flex-shrink:0;user-select:none}
+.mini-switch{display:inline-flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;color:var(--color-on-surface-variant);flex-shrink:0;user-select:none}
 .mini-switch input{position:absolute;opacity:0;width:0;height:0}
-.mini-track{position:relative;width:30px;height:16px;border-radius:8px;background:var(--border,#ccc);transition:background .15s}
-.mini-track::after{content:"";position:absolute;top:2px;inset-inline-start:2px;width:12px;height:12px;border-radius:50%;background:#fff;transition:inset-inline-start .15s}
+.mini-track{position:relative;width:30px;height:16px;border-radius:8px;background:var(--color-outline-variant);transition:background .15s}
+.mini-track::after{content:"";position:absolute;top:2px;inset-inline-start:2px;width:12px;height:12px;border-radius:50%;background:var(--color-surface-container-lowest);transition:inset-inline-start .15s}
 .mini-switch input:checked + .mini-track{background:var(--color-primary)}
 .mini-switch input:checked + .mini-track::after{inset-inline-start:16px}
 .mini-switch input:checked ~ .mini-text{color:var(--text,inherit)}
@@ -113,7 +113,7 @@ textarea.input{resize:vertical;min-height:4em;font:inherit}
 .switch-row{display:flex;align-items:flex-start;gap:12px;cursor:pointer}
 .switch-row > input{position:absolute;opacity:0;width:0;height:0}
 .mini-track.big{flex-shrink:0;width:40px;height:22px;border-radius:11px;margin-top:2px}
-.mini-track.big::after{top:3px;inset-inline-start:3px;width:16px;height:16px;box-shadow:0 1px 2px rgba(0,0,0,.3)}
+.mini-track.big::after{top:3px;inset-inline-start:3px;width:16px;height:16px;box-shadow:0 1px 2px var(--color-outline)}
 .switch-row > input:checked + .mini-track{background:var(--color-primary)}
 .switch-row > input:checked + .mini-track.big::after{inset-inline-start:21px}
 .switch-row > input:focus-visible + .mini-track{outline:2px solid var(--color-primary);outline-offset:2px}

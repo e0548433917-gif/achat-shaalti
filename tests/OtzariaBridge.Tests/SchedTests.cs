@@ -62,4 +62,34 @@ public class SchedTests
     {
         Assert.False(Sched.InWindow(start, end, DateTime.Now));
     }
+
+    [Fact]
+    public void CurrentWindowEnd_single_window_same_day_and_across_midnight()
+    {
+        var day = new DateTime(2026, 1, 1);
+        Assert.Null(Sched.CurrentWindowEnd("09:00", "17:00", day + TimeSpan.FromHours(8)));
+        Assert.Equal(day + TimeSpan.FromHours(17), Sched.CurrentWindowEnd("09:00", "17:00", day + TimeSpan.FromHours(12)));
+        // חלון שחוצה חצות: בערב הסוף מחר, אחרי חצות הסוף היום
+        Assert.Equal(day.AddDays(1) + TimeSpan.FromHours(2), Sched.CurrentWindowEnd("20:00", "02:00", day + TimeSpan.FromHours(21)));
+        Assert.Equal(day + TimeSpan.FromHours(2), Sched.CurrentWindowEnd("20:00", "02:00", day + TimeSpan.FromHours(1)));
+    }
+
+    [Fact]
+    public void CurrentWindowEnd_several_windows_returns_latest_end_of_those_containing_now()
+    {
+        var day = new DateTime(2026, 1, 1);
+        var windows = new[] { ("09:00", "12:00"), ("11:00", "15:00"), ("18:00", "19:00") };
+        Assert.Null(Sched.CurrentWindowEnd(windows, day + TimeSpan.FromHours(8)));
+        Assert.Equal(day + TimeSpan.FromHours(12), Sched.CurrentWindowEnd(windows, day + TimeSpan.FromHours(10)));
+        Assert.Equal(day + TimeSpan.FromHours(15), Sched.CurrentWindowEnd(windows, day + TimeSpan.FromHours(11.5))); // חופפים - המאוחר
+    }
+
+    [Fact]
+    public void ParseWindows_skips_invalid_items()
+    {
+        var w = Sched.ParseWindows("20:00-23:00, bad, 5:30-6:30,25:00-01:00,,09:00");
+        Assert.Equal(new[] { ("20:00", "23:00"), ("5:30", "6:30") }, w.ToArray());
+        Assert.Empty(Sched.ParseWindows(null));
+        Assert.Empty(Sched.ParseWindows(""));
+    }
 }

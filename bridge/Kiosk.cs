@@ -806,9 +806,7 @@ public static partial class Kiosk
         {
             var end = SchedMulti.CurrentWindowEnd(DateTime.Now);
             Config.Set("kiosk.schedule.skipUntil", end.ToString("o"));
-            Config.Save();
-            if (HardLock.Available)
-                try { HardLock.Skip(pw, end.ToString("o")); } catch (Exception ex) { Config.Log("hardlock skip (disable): " + ex.Message); }
+            Config.Save(); // השירות מדלג בעצמו על שארית החלון ב-disable (HardLockService) - בלי קריאת Skip נוספת שדורשת Hello שוב
             Config.Log("schedule: ביטול ידני בתוך חלון מתוזמן — דילוג עד " + end);
         }
         EndTempUnlockLocal("הנעילה בוטלה ידנית", relock: false); // ביטול מלא: הנעילה לא תחזור בתום הפתיחה הזמנית
@@ -1037,6 +1035,7 @@ public static partial class Kiosk
                 Config.Save();
             }
             if (locked) return;
+            SetTaskbars(true); // אם התהליך הקודם קרס כשהסתיר את שורת המשימות - מחזירים אותה
             bool hadShell = ShellPointsToBridge();
             ClearRegistry();
             if (hadShell) Config.Log("kiosk: נמצאה מעטפת Shell שמפנה לגשר בלי נעילה פעילה — נמחקה, ו-explorer מופעל");
@@ -1178,6 +1177,7 @@ public static partial class Kiosk
             Overlay.ShowClock(); // שורת המשימות מוסתרת — שעה ותאריך בשעון צף
             Overlay.ShowSideBar(); // סרגל תוכנות בצד המסך: מעבר מהיר בין אוצריא לתוכנות התורניות
             _watchdog ??= new System.Threading.Timer(_ => Watch(), null, 0, 2000);
+            StartFastGuard();
             Tray.SetKioskState(true);
         }
     }
@@ -1190,9 +1190,11 @@ public static partial class Kiosk
             Config.Set("kiosk.active", false);
             Config.Set("kiosk.confirmed", false);
             if (!keepStrict) Config.Set("kiosk.strict", false);
-            Config.Save();
+            // כשל בשמירה (נעילת קובץ של אנטי-וירוס, דיסק מלא) לא יעצור את שאר השחרור - אחרת נשאר מצב חצי-משוחרר
+            try { Config.Save(); } catch (Exception ex) { Config.Log("release save: " + ex.Message); }
             _watchdog?.Dispose();
             _watchdog = null;
+            StopFastGuard();
             // ממתינים שסבב שומר שכבר רץ יסתיים, כדי שלא יסגור את explorer מיד אחרי שהופעל מחדש
             for (int i = 0; i < 30 && Volatile.Read(ref _watchBusy) == 1; i++) Thread.Sleep(100);
             Tray.Invoke(RemoveHook);
@@ -1264,14 +1266,27 @@ public static partial class Kiosk
 
     public static bool EmergencyRelease(string code)
     {
-        bool viaBackup = false;
-        if (!Matches(Secret.NormalizeRecovery(code), "kiosk.recoveryHash", "kiosk.recoverySalt"))
+        // כשהשירות מותקן הוא מקור האמת לקוד השחזור (בחשבון Windows אחר אין hash מקומי בכלל) - פונים אליו קודם,
+        // ורק אם הוא לא אישר בודקים מקומית: קוד שחזור, ואחריו קוד גיבוי חד-פעמי (#69). קודם נבדק רק המקומי,
+        // אז קוד נכון נדחה כשהדגל המקומי לא תאם
+        bool svcOk = false, viaBackup = false;
+        try { if (HardLock.Available || HardLock.ServiceActive) svcOk = HardLock.EmergencyDisable(code); }
+        catch (Exception ex) { Config.Log("emergency: " + ex.Message); }
+        // כשהשירות זמין התשובה שלו מכרעת: ה-hash המקומי נמצא ב-config.json שהמשתמש יכול לערוך, ולכן תלמיד יכול היה
+        // להחליף אותו בקוד ידוע ולפתוח את החלון. הבדיקה המקומית נשארת רק כשאין שירות (או שאינו עונה)
+        if (!svcOk && HardLock.Available) return false;
+        if (!svcOk && !Matches(Secret.NormalizeRecovery(code), "kiosk.recoveryHash", "kiosk.recoverySalt"))
         {
             if (!IsBackupCode(code)) return false;
             viaBackup = true; // #69: קוד גיבוי חד-פעמי
         }
-        try { HardLock.EmergencyDisable(code); } catch (Exception ex) { Config.Log("emergency: " + ex.Message); }
         if (viaBackup) BackupCodes.Consume(code);
+        // כמו ב-Disable: ביטול בתוך חלון תזמון נעילה היה ננעל מחדש תוך שניות (ScheduleTick) ויוצר לולאת "בטל-ננעל"
+        if (ScheduleEnabled && SchedMulti.InAnyWindow(DateTime.Now))
+        {
+            Config.Set("kiosk.schedule.skipUntil", SchedMulti.CurrentWindowEnd(DateTime.Now).ToString("o"));
+            Config.Save();
+        }
         EndTempUnlockLocal("ביטול חירום בקוד שחזור", relock: false);
         Release();
         Config.Log("kiosk: הנעילה בוטלה בקיצור חירום עם קוד שחזור");
@@ -1418,6 +1433,27 @@ public static partial class Kiosk
         catch { /* נסגר כבר או ללא הרשאה */ }
     }
 
+    private static int _otzLaunches;
+    private static DateTime _otzNextLaunch = DateTime.MinValue, _otzRunningSince = DateTime.MinValue;
+
+    private static DateTime _snipSeen = DateTime.MinValue;
+
+    /// <summary>כלי החיתוך (שברשימת התוכנות המותרות) רץ בחשבון הזה - עד 60 שניות רצופות, ואז חוזרים לאכוף</summary>
+    private static bool SnipCaptureInProgress(int session)
+    {
+        bool found = false;
+        foreach (string n in new[] { "SnippingTool", "ScreenClippingHost" })
+            foreach (var p in Process.GetProcessesByName(n))
+                using (p)
+                {
+                    try { if (p.SessionId == session && Programs.IsAllowedForeground((uint)p.Id)) found = true; }
+                    catch { }
+                }
+        if (!found) { _snipSeen = DateTime.MinValue; return false; }
+        if (_snipSeen == DateTime.MinValue) { _snipSeen = DateTime.UtcNow; LogThrottled("snip", "watchdog: כלי החיתוך פתוח - explorer לא נהרג עד 60 שניות", 30); }
+        return (DateTime.UtcNow - _snipSeen).TotalSeconds < 60;
+    }
+
     private static void Watch()
     {
         if (!IsActive || Interlocked.Exchange(ref _watchBusy, 1) == 1) return;
@@ -1426,6 +1462,11 @@ public static partial class Kiosk
             int session = Process.GetCurrentProcess().SessionId;
             // ממצא ביקורת אבטחה: מתעדכן כאן (חוט הטיימר, כל 2 שניות) ולא בתוך ה-hook עצמו — ר' הערה ב-ForegroundIsAllowedProgram
             UpdateForegroundAllowedCache();
+            RefreshHook();
+            // בזמן שכלי החיתוך המאושר פתוח לא הורגים את explorer (עד דקה): שכבת הצילום של "חדש" בווינדוס 11
+            // מתארחת בתוך explorer, ו-Kill כל 2 שניות הרג אותה מיד - נראה כרענון של כלי החיתוך בלי צילום (נצפה
+            // ברישום: explorer/userinit/SearchHost נולדים מחדש בכל מחזור). המחיר: שורת המשימות עשויה להופיע לשניות
+            if (!SnipCaptureInProgress(session))
             foreach (var p in Process.GetProcessesByName("explorer"))
             {
                 try
@@ -1450,11 +1491,25 @@ public static partial class Kiosk
             var otz = Process.GetProcessesByName(name).FirstOrDefault(p => p.SessionId == session);
             if (otz == null)
             {
+                _otzRunningSince = DateTime.MinValue;
                 if (!string.IsNullOrEmpty(path) && File.Exists(path))
-                    Process.Start(new ProcessStartInfo(path) { UseShellExecute = true, WorkingDirectory = Path.GetDirectoryName(path) });
+                {
+                    // backoff: אם אוצריא קורסת בעלייה, הפעלה מחדש בכל 2 שניות יוצרת תהליך חדש בלי הפסקה (ומציפה את
+                    // המחשב). ההמתנה בין ניסיונות גדלה 2,4,8,16,32,60 שניות, ומתאפסת אחרי ש-אוצריא רצה 20 שניות ברצף
+                    if (DateTime.UtcNow >= _otzNextLaunch)
+                    {
+                        Process.Start(new ProcessStartInfo(path) { UseShellExecute = true, WorkingDirectory = Path.GetDirectoryName(path) });
+                        _otzLaunches++;
+                        _otzNextLaunch = DateTime.UtcNow.AddSeconds(Math.Min(60, 1 << Math.Min(_otzLaunches, 6)));
+                        if (_otzLaunches >= 3) LogThrottled("otzCrash", "watchdog: אוצריא לא נשארת פתוחה (ניסיון הפעלה " + _otzLaunches + ") - ממתינים לפני הניסיון הבא", 60);
+                    }
+                    else if (_otzLaunches >= 3 && !Overlay.RestVisible) Overlay.ShowRest(IntPtr.Zero, idle: true); // בזמן ההמתנה לא מציגים שולחן עבודה
+                }
                 else if (!Overlay.RestVisible) Overlay.ShowRest(IntPtr.Zero, idle: true); // אין אוצריא: מסך סגור עם הודעה
                 return;
             }
+            if (_otzRunningSince == DateTime.MinValue) _otzRunningSince = DateTime.UtcNow;
+            else if ((DateTime.UtcNow - _otzRunningSince).TotalSeconds >= 20) { _otzLaunches = 0; _otzNextLaunch = DateTime.MinValue; }
 
             IntPtr hwnd = otz.MainWindowHandle;
             if (hwnd == IntPtr.Zero) return;
@@ -1478,6 +1533,10 @@ public static partial class Kiosk
 
             GetWindowThreadProcessId(GetForegroundWindow(), out uint fgPid);
             if (fgPid == otz.Id || fgPid == Environment.ProcessId) return;
+            // pid=0 ("Idle" בלוג): אין חלון בחזית ברגע הדגימה - מעבר פוקוס בין חלונות. החזרת אוצריא ברגע כזה גוזלת
+            // את הפוקוס מהחלון שעומד לקבל אותו (למשל שכבת הצילום של כלי החיתוך אחרי "חדש") ונראית כרענון של התוכנה.
+            // הדגימה הבאה (עוד 2 שניות) תבדוק שוב; חלון אסור אמיתי יזוהה אז לפי התהליך שלו
+            if (fgPid == 0) return;
             CloseShellWindow(fgPid, session);
             if (Programs.IsAllowedForeground(fgPid)) return; // תוכנה מותרת (רשימה מוגדרת בסיסמה) בחזית
             try
@@ -1512,6 +1571,20 @@ public static partial class Kiosk
         _hookProc = HookCallback;
         _hook = SetWindowsHookEx(13 /* WH_KEYBOARD_LL */, _hookProc, GetModuleHandle(null), 0);
         if (_hook == IntPtr.Zero) Config.Log("keyboard hook failed: " + Marshal.GetLastWin32Error());
+        else if (!_hookLogged) { _hookLogged = true; Config.Log("keyboard hook installed"); }
+    }
+
+    private static bool _hookLogged;
+    private static int _hookTick;
+
+    /// <summary>
+    /// Windows מסירה בשקט hook מקלדת גלובלי שחרג מ-LowLevelHooksTimeout, ו-InstallHook יוצא מוקדם כש-_hook כבר מוגדר
+    /// (אז חסימת Win/Alt+Tab וצירוף החירום פשוט מפסיקים לעבוד בלי שאף אחד יודע). מתקינים מחדש כל כ-30 שניות
+    /// </summary>
+    private static void RefreshHook()
+    {
+        if (++_hookTick % 15 != 0) return;
+        Tray.Invoke(() => { if (!IsActive) return; RemoveHook(); InstallHook(); }); // אחרי שחרור לא מתקינים מחדש
     }
 
     private static void RemoveHook()
@@ -1603,15 +1676,20 @@ public static partial class Kiosk
             // Alt+F4 עובד בתוכנה מותרת שנמצאת בחזית, כדי שאפשר לסגור אותה ולחזור לאוצריא
             if (block && alt && vk == 0x73 && ForegroundIsAllowedProgram()) block = false;
             // Ctrl+Alt+O: חזרה לאוצריא מתוכנה מותרת (רק כשתוכנה מותרת בחזית; באוצריא עצמה המקשים עוברים הלאה)
-            if (ctrl && alt && vk == 0x4F && (wParam == (IntPtr)0x100 || wParam == (IntPtr)0x104) && ForegroundIsAllowedProgram())
+            if (ctrl && (alt || (GetAsyncKeyState(0x12) & 0x8000) != 0) && vk == 0x4F && (wParam == (IntPtr)0x100 || wParam == (IntPtr)0x104) && ForegroundIsAllowedProgram())
             {
                 Task.Run(ReturnToOtzaria);
                 return (IntPtr)1;
             }
             // Ctrl+Alt+Shift+F12: חלון קוד שחזור לביטול חירום של הנעילה
-            if (ctrl && alt && vk == 0x7B && (GetAsyncKeyState(0x10) & 0x8000) != 0 && (wParam == (IntPtr)0x100 || wParam == (IntPtr)0x104))
+            // דגל ה-Alt של ה-hook (LLKHF_ALTDOWN) לא מסומן בכל מקלדת/פריסה (נצפה בלוג: F12 הגיע עם ctrl+shift אבל
+            // alt=False למרות ש-Alt היה לחוץ) - לכן בודקים גם את מצב המקש עצמו, ומקבלים אם אחד מהם אומר "לחוץ"
+            bool altHeld = alt || (GetAsyncKeyState(0x12) & 0x8000) != 0;
+            if (ctrl && altHeld && vk == 0x7B && (GetAsyncKeyState(0x10) & 0x8000) != 0 && (wParam == (IntPtr)0x100 || wParam == (IntPtr)0x104))
             {
-                Tray.Invoke(EmergencyForm.Open);
+                // לא מריצים כאן ישירות: ה-hook רץ בחוט ה-UI, ו-Tray.Invoke מריץ סינכרונית כשכבר בו -
+                // פתיחת טופס + BringToFront + קריאת pipe לשירות בתוך callback חורגים מ-300ms ו-Windows מתעלמת מה-hook
+                Task.Run(() => { try { Config.Log("emergency: זוהה Ctrl+Alt+Shift+F12 ב-hook"); Tray.Invoke(EmergencyForm.Open); } catch (Exception ex) { Config.Log("emergency open: " + ex.Message); } });
                 return (IntPtr)1;
             }
             if (block) return (IntPtr)1;

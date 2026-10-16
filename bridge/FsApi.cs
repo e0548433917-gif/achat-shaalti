@@ -495,14 +495,19 @@ public static class FsApi
         string path = FullPath(b.Req("path"));
         if (!File.Exists(path)) throw BridgeException.NotFound("הקובץ לא נמצא: " + path);
         long max = Math.Clamp(b.Long("maxBytes", 5L * 1024 * 1024), 1, 50L * 1024 * 1024);
+        // offset: קריאה בחלקים של קובץ גדול מ-50MB. binary: תמיד base64 (גם בסיומת טקסט), כדי שחיתוך באמצע תו לא ישבש.
+        long offset = Math.Max(0, b.Long("offset", 0));
+        bool binary = b.Bool("binary");
         var fi = new FileInfo(path);
         string ext = fi.Extension;
-        bool truncated = fi.Length > max;
-        int len = (int)Math.Min(fi.Length, max);
+        long remaining = Math.Max(0, fi.Length - offset);
+        bool truncated = remaining > max;
+        int len = (int)Math.Min(remaining, max);
 
         byte[] buf = new byte[len];
         using (var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
         {
+            if (offset > 0) fs.Seek(Math.Min(offset, fs.Length), SeekOrigin.Begin);
             int read = 0;
             while (read < len)
             {
@@ -514,12 +519,12 @@ public static class FsApi
         }
 
         string mime = Mime.TryGetValue(ext, out var m) ? m : "application/octet-stream";
-        if (TextExt.Contains(ext))
+        if (!binary && offset == 0 && TextExt.Contains(ext))
         {
             string content = DecodeText(buf);
-            return new { name = fi.Name, size = fi.Length, mime, encoding = "utf8", content, truncated };
+            return new { name = fi.Name, size = fi.Length, mime, encoding = "utf8", content, truncated, offset };
         }
-        return new { name = fi.Name, size = fi.Length, mime, encoding = "base64", content = Convert.ToBase64String(buf), truncated };
+        return new { name = fi.Name, size = fi.Length, mime, encoding = "base64", content = Convert.ToBase64String(buf), truncated, offset };
     }
 
     private static string DecodeText(byte[] buf)
